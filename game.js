@@ -2004,19 +2004,42 @@
         if (running) e.preventDefault();
     }, { passive: false });
 
-    // 画布自适应：移动端CSS缩放 canvas（逻辑分辨率不变）
+    // 画布自适应：根据可用视口高度动态计算canvas尺寸，确保触控按钮不被遮挡
     function resizeCanvas() {
         const vw = window.innerWidth;
+        // 使用 visualViewport 获取实际可视高度（排除浏览器UI），回退到 innerHeight
+        const vh = (window.visualViewport ? window.visualViewport.height : window.innerHeight);
+        
         if (vw < 520) {
-            const scale = vw / RENDER_W;
-            canvas.style.width = vw + 'px';
-            canvas.style.height = (RENDER_H * scale) + 'px';
+            // 移动端：计算HUD和触控按钮占用的高度
+            const hud = document.getElementById('hud');
+            const touchCtrl = document.getElementById('touch-controls');
+            const hudH = hud ? hud.offsetHeight : 44;
+            const touchH = touchCtrl ? touchCtrl.offsetHeight : 92;
+            
+            // canvas可用高度 = 视口高度 - HUD高度 - 触控按钮高度
+            const availH = vh - hudH - touchH;
+            
+            // 按宽度等比缩放的canvas高度
+            const scaleByWidth = vw / RENDER_W;
+            const canvasHByWidth = RENDER_H * scaleByWidth;
+            
+            // 取较小值，确保不超出可用区域
+            const finalH = Math.min(canvasHByWidth, availH);
+            const finalW = finalH * (RENDER_W / RENDER_H);
+            
+            canvas.style.width = finalW + 'px';
+            canvas.style.height = finalH + 'px';
         } else {
             canvas.style.width = '';
             canvas.style.height = '';
         }
     }
     window.addEventListener('resize', resizeCanvas);
+    // 监听 visualViewport 变化（浏览器地址栏收起/展开时触发）
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', resizeCanvas);
+    }
     resizeCanvas();
 
     // ========== 初始化 ==========
