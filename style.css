@@ -6,12 +6,19 @@
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
+html {
+    height: 100%;
+    height: 100dvh;   /* 动态视口高度，排除浏览器UI */
+    overflow: hidden;
+}
+
 body {
     background: #020408;
     display: flex;
     justify-content: center;
     align-items: center;
-    min-height: 100vh;
+    height: 100%;
+    height: 100dvh;
     font-family: 'Orbitron', 'Courier New', monospace, sans-serif;
     overflow: hidden;
     color: #fff;
@@ -49,6 +56,9 @@ body::before {
     align-items: center;
     z-index: 1;
     max-width: 100vw;
+    height: 100%;
+    height: 100dvh;
+    overflow: hidden;
 }
 
 /* === HUD - 全息显示面板 === */
@@ -102,6 +112,9 @@ body::before {
         inset 0 0 0 1px rgba(60,100,200,0.1);
     max-width: 100vw;
     height: auto;
+    flex: 1 1 auto;
+    min-height: 0;     /* flex子项允许收缩到0 */
+    object-fit: contain;
 }
 
 /* === Overlay - 赛博朋克启动屏 === */
@@ -196,11 +209,18 @@ body::before {
     justify-content: center;
     align-items: center;
     gap: 16px;
-    padding: 12px 8px 20px;
+    padding: 10px 8px;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
     width: 100%;
     max-width: 500px;
     -webkit-user-select: none;
     user-select: none;
+    flex: 0 0 auto;    /* 按钮区不收缩，固定高度 */
+    background: linear-gradient(180deg,
+        rgba(2,4,8,0.85),
+        rgba(2,4,8,0.98));
+    position: relative;
+    z-index: 10;
 }
 
 .touch-btn {
@@ -293,10 +313,16 @@ body::before {
     body {
         align-items: flex-start;
     }
+    #game-container {
+        width: 100vw;
+        height: 100%;
+        height: 100dvh;
+    }
     #hud {
         width: 100vw;
         border-radius: 0;
         padding: 8px 16px;
+        flex: 0 0 auto;
     }
     .hud-label {
         font-size: 8px;
@@ -308,7 +334,7 @@ body::before {
     #gameCanvas {
         border-radius: 0;
         width: 100vw !important;
-        height: auto !important;
+        /* 高度由JS动态计算 */
     }
     #touch-controls {
         display: flex;
