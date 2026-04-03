@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>🌀 NEON COSMOS — 赛博弹球</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="game-container">
+        <!-- 全息 HUD -->
+        <div id="hud">
+            <div class="hud-item">
+                <span class="hud-label">SCORE</span>
+                <span id="score" class="hud-value">0</span>
+            </div>
+            <div class="hud-item">
+                <span class="hud-label">BALLS</span>
+                <span id="balls" class="hud-value">3</span>
+            </div>
+            <div class="hud-item">
+                <span class="hud-label">HIGH SCORE</span>
+                <span id="highscore" class="hud-value">0</span>
+            </div>
+        </div>
+
+        <!-- 渲染画布 -->
+        <canvas id="gameCanvas"></canvas>
+
+        <!-- 手机触控按钮 -->
+        <div id="touch-controls">
+            <div id="touch-left" class="touch-btn">
+                <span class="touch-icon">◀</span>
+                <span class="touch-label">LEFT</span>
+            </div>
+            <div id="touch-launch" class="touch-btn touch-btn-launch">
+                <span class="touch-icon">▲</span>
+                <span class="touch-label">LAUNCH</span>
+            </div>
+            <div id="touch-right" class="touch-btn">
+                <span class="touch-icon">▶</span>
+                <span class="touch-label">RIGHT</span>
+            </div>
+        </div>
+
+        <!-- 覆盖层 -->
+        <div id="overlay">
+            <div id="overlay-content">
+                <h1 id="overlay-title">NEON COSMOS</h1>
+                <p id="overlay-subtitle">赛 博 弹 球</p>
+                <p id="overlay-score" style="display:none;"></p>
+                <button id="start-btn" onclick="window._startGame && window._startGame()">▶ LAUNCH</button>
+                <p class="controls-hint">
+                    <span class="hint-desktop">← → 或 A D 控制挡板 &nbsp;|&nbsp; 空格键 蓄力发射</span>
+                    <span class="hint-mobile">左右按钮控制挡板 &nbsp;|&nbsp; 长按中间按钮蓄力发射</span>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script src="game.js"></script>
+</body>
+</html>
