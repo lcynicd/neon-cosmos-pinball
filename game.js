@@ -132,6 +132,39 @@
     let frame = 0, time = 0;
     const keys = {};
 
+    // ========== 性能分层系统 ==========
+    const PERF = (function detectPerformance() {
+        const isMob = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+        const cores = navigator.hardwareConcurrency || 2;
+        const memGB = navigator.deviceMemory || 4;
+        const dpr = window.devicePixelRatio || 1;
+        let sc = 5;
+        if (isMob) sc -= 2;
+        if (cores < 4) sc -= 1;
+        if (memGB < 4) sc -= 1;
+        if (dpr > 2) sc -= 1;
+        const tier = sc >= 4 ? 'HIGH' : sc >= 2 ? 'MEDIUM' : 'LOW';
+        console.log('[Perf] tier=' + tier + ' mob=' + isMob + ' cores=' + cores + ' mem=' + memGB + ' dpr=' + dpr);
+        return {
+            tier: tier,
+            bloom: tier === 'HIGH',
+            shadow: tier !== 'LOW',
+            shadowScale: tier === 'HIGH' ? 1.0 : 0.5,
+            cracks: tier !== 'LOW',
+            cracksInterval: tier === 'HIGH' ? 1 : 3,
+            decorInterval: tier === 'HIGH' ? 1 : 2,
+            maxParticles: tier === 'HIGH' ? 120 : tier === 'MEDIUM' ? 60 : 30,
+            trailLen: tier === 'HIGH' ? 16 : tier === 'MEDIUM' ? 8 : 4,
+            vortexArmPts: tier === 'HIGH' ? 40 : 20,
+            vortexInterval: tier === 'HIGH' ? 1 : 2,
+            railFlow: tier !== 'LOW',
+            railFlowDots: tier === 'HIGH' ? 3 : 1,
+            bumperArcs: tier === 'HIGH',
+            bumperDots: tier === 'HIGH' ? 10 : 5,
+            trailShadow: tier === 'HIGH',
+        };
+    })();
+
     let ball = null, launched = false, inLane = false, springComp = 0;
     let flippers = [], bumpers = [], slings = [];
     let particles = [], popups = [], arcs = [];
@@ -234,7 +267,7 @@
             const neonCol = this.side === 'left' ? NEON.cyan : NEON.purple;
             ctx.lineWidth = 1;
             ctx.strokeStyle = neonGlow(neonCol, 0.3 + this.glow * 0.5);
-            ctx.shadowColor = neonCol; ctx.shadowBlur = 8 + this.glow * 15;
+            if (PERF.shadow) { ctx.shadowColor = neonCol; ctx.shadowBlur = (8 + this.glow * 15) * PERF.shadowScale; }
             ctx.beginPath(); ctx.moveTo(p0.x - fnx * thick * 0.1, p0.y - fny * thick * 0.1); ctx.lineTo(p1.x - fnx * thick * 0.1, p1.y - fny * thick * 0.1); ctx.stroke();
             ctx.shadowBlur = 0;
 
@@ -244,7 +277,7 @@
             // 激活发光
             if (this.glow > 0) {
                 ctx.globalAlpha = this.glow * 0.2;
-                ctx.shadowColor = neonCol; ctx.shadowBlur = 30;
+                if (PERF.shadow) { ctx.shadowColor = neonCol; ctx.shadowBlur = 30 * PERF.shadowScale; }
                 ctx.lineWidth = thick + 4; ctx.strokeStyle = neonCol;
                 ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.stroke();
             }
@@ -309,7 +342,7 @@
             // 底座霓虹环
             ctx.lineWidth = 2 * sc;
             ctx.strokeStyle = neonGlow(this.ring, 0.4 + (glow ? 0.4 : 0));
-            ctx.shadowColor = this.ring; ctx.shadowBlur = glow ? 15 : 6;
+            if (PERF.shadow) { ctx.shadowColor = this.ring; ctx.shadowBlur = (glow ? 15 : 6) * PERF.shadowScale; }
             ctx.beginPath(); ctx.ellipse(p.x, p.y + baseH * 0.5, pr + 4, (pr + 4) * 0.38, 0, 0, Math.PI * 2); ctx.stroke();
             ctx.shadowBlur = 0;
 
@@ -343,7 +376,8 @@
             ctx.fillStyle = coreG;
             ctx.beginPath(); ctx.arc(p.x, p.y, coreR, 0, Math.PI * 2); ctx.fill();
 
-            // 内部电弧
+            // 内部电弧（仅HIGH模式绘制）
+            if (PERF.bumperArcs) {
             ctx.strokeStyle = neonGlow(this.ring, 0.3 + (glow ? 0.5 : 0));
             ctx.lineWidth = 1 * sc;
             for (let i = 0; i < 3; i++) {
@@ -357,6 +391,7 @@
                 ctx.beginPath(); ctx.moveTo(startX, startY);
                 ctx.quadraticCurveTo(midX, midY, endX, endY); ctx.stroke();
             }
+            } // end PERF.bumperArcs
 
             // 玻璃高光 — 主高光（大椭圆）
             ctx.fillStyle = `rgba(255,255,255,${glow ? 0.55 : 0.28})`;
@@ -368,8 +403,8 @@
 
             // 外圈装饰灯（脉冲）— 优化shadowBlur切换
             ctx.shadowBlur = 0;
-            for (let i = 0; i < 10; i++) {
-                const a = (i / 10) * Math.PI * 2 + this.phase;
+            for (let i = 0; i < PERF.bumperDots; i++) {
+                const a = (i / PERF.bumperDots) * Math.PI * 2 + this.phase;
                 const dx = Math.cos(a) * (pr + 7 * sc), dy = Math.sin(a) * (pr * 0.72 + 5 * sc);
                 const lit = glow || (Math.sin(this.phase * 2 + i * 0.6) > 0.3);
                 ctx.fillStyle = lit ? this.ring : neonGlow(this.ring, 0.15);
@@ -379,7 +414,7 @@
             // 击中时的大范围辉光
             if (glow) {
                 ctx.globalAlpha = this.hit / 15 * 0.35;
-                ctx.shadowColor = this.col; ctx.shadowBlur = 45;
+                if (PERF.shadow) { ctx.shadowColor = this.col; ctx.shadowBlur = 45 * PERF.shadowScale; }
                 ctx.fillStyle = this.col;
                 ctx.beginPath(); ctx.ellipse(p.x, p.y, pr * 1.5, pr * 1.5 * 0.72, 0, 0, Math.PI * 2); ctx.fill();
             }
@@ -463,7 +498,7 @@
             // 霓虹边缘（内侧更亮）
             ctx.lineWidth = 1.5 * sc;
             ctx.strokeStyle = neonGlow(this.col, glow ? 0.9 : 0.5);
-            ctx.shadowColor = this.col; ctx.shadowBlur = glow ? 20 : 8;
+            if (PERF.shadow) { ctx.shadowColor = this.col; ctx.shadowBlur = (glow ? 20 : 8) * PERF.shadowScale; }
             ctx.beginPath(); ctx.moveTo(pa.x + nx * 0.35, pa.y + ny * 0.35); ctx.lineTo(pb.x + nx * 0.35, pb.y + ny * 0.35); ctx.stroke();
             ctx.shadowBlur = 0;
 
@@ -473,7 +508,7 @@
 
             if (glow) {
                 ctx.globalAlpha = this.hit / 12 * 0.3;
-                ctx.shadowColor = this.col; ctx.shadowBlur = 25;
+                if (PERF.shadow) { ctx.shadowColor = this.col; ctx.shadowBlur = 25 * PERF.shadowScale; }
                 ctx.lineWidth = 8 * sc; ctx.strokeStyle = this.col;
                 ctx.beginPath(); ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y); ctx.stroke();
             }
@@ -509,14 +544,17 @@
         g.addColorStop(0, '#fff'); g.addColorStop(0.3, lighten(col, 0.5));
         g.addColorStop(0.6, col); g.addColorStop(1, neonGlow(col, 0.2));
         ctx.fillStyle = g;
-        ctx.shadowColor = col; ctx.shadowBlur = 8;
+        if (PERF.shadow) { ctx.shadowColor = col; ctx.shadowBlur = 8 * PERF.shadowScale; }
         ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fill();
         ctx.shadowBlur = 0;
     }
 
     // ========== 粒子系统 ==========
     function emitParticles(lx, ly, col, n) {
-        for (let i = 0; i < n; i++) {
+        // 限制粒子总数
+        const budget = PERF.maxParticles - particles.length;
+        const actual = Math.min(n, budget);
+        for (let i = 0; i < actual; i++) {
             const a = Math.random() * Math.PI * 2, sp = 2 + Math.random() * 5;
             particles.push({
                 x: lx, y: ly, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 1.5,
@@ -539,33 +577,35 @@
         }
     }
     function drawParticles() {
+        ctx.save();
+        // 批量绘制spark类粒子（不用shadowBlur，用纯色代替）
         for (const p of particles) {
             const pp = proj(p.x, p.y), a = p.life / p.max;
             const sc = scaleAt(p.y);
-            ctx.save(); ctx.globalAlpha = a;
+            ctx.globalAlpha = a;
             if (p.type === 'spark') {
                 const pv = proj(p.x - p.vx * 4, p.y - p.vy * 4);
                 ctx.strokeStyle = p.col; ctx.lineWidth = p.r * 0.6 * sc;
-                ctx.shadowColor = p.col; ctx.shadowBlur = 4;
+                if (PERF.shadow) { ctx.shadowColor = p.col; ctx.shadowBlur = 4; }
                 ctx.beginPath(); ctx.moveTo(pp.x, pp.y); ctx.lineTo(pv.x, pv.y); ctx.stroke();
             } else {
-                ctx.shadowColor = p.col; ctx.shadowBlur = 6;
+                if (PERF.shadow) { ctx.shadowColor = p.col; ctx.shadowBlur = 6; }
                 ctx.fillStyle = p.col;
                 ctx.beginPath(); ctx.arc(pp.x, pp.y, p.r * a * sc, 0, Math.PI * 2); ctx.fill();
             }
-            ctx.restore();
         }
+        ctx.shadowBlur = 0;
         // 电弧
         for (const arc of arcs) {
             const pa = proj(arc.x1, arc.y1), pb = proj(arc.x2, arc.y2);
             const a = arc.life / arc.max;
-            ctx.save(); ctx.globalAlpha = a * 0.7;
+            ctx.globalAlpha = a * 0.7;
             ctx.strokeStyle = arc.col; ctx.lineWidth = 1.5;
-            ctx.shadowColor = arc.col; ctx.shadowBlur = 10;
+            if (PERF.shadow) { ctx.shadowColor = arc.col; ctx.shadowBlur = 10; }
             const mid = { x: (pa.x + pb.x) / 2 + (Math.random() - 0.5) * 20, y: (pa.y + pb.y) / 2 + (Math.random() - 0.5) * 15 };
             ctx.beginPath(); ctx.moveTo(pa.x, pa.y); ctx.quadraticCurveTo(mid.x, mid.y, pb.x, pb.y); ctx.stroke();
-            ctx.restore();
         }
+        ctx.restore();
     }
 
     // ========== 关卡初始化 ==========
@@ -1091,14 +1131,17 @@
     // ========== 动态绘制 ==========
 
     function drawDynamicCracks() {
+        if (!PERF.cracks) return;
+        if (frame % PERF.cracksInterval !== 0) return;
         // 动态闪电叠加 — 随时间脉冲
         ctx.save();
+        if (PERF.shadow) { ctx.shadowBlur = 10 * PERF.shadowScale; } else { ctx.shadowBlur = 0; }
         for (const crack of cracks) {
             const pulse = Math.sin(time * 0.002 + crack.pts[0].x * 0.01) * 0.5 + 0.5;
             if (pulse < 0.3) continue;
             ctx.globalAlpha = pulse * 0.08;
             ctx.strokeStyle = crack.col; ctx.lineWidth = crack.width + 1;
-            ctx.shadowColor = crack.col; ctx.shadowBlur = 10;
+            if (PERF.shadow) { ctx.shadowColor = crack.col; }
             ctx.beginPath();
             const fp = proj(crack.pts[0].x, crack.pts[0].y);
             ctx.moveTo(fp.x, fp.y);
@@ -1122,6 +1165,7 @@
 
     // 立体管道上的能量流动动画
     function drawDynamicRailFlow() {
+        if (!PERF.railFlow) return;
         const rails = [
             { pts: [[LW - 15, 40], [LW - 10, 120], [LW - 20, 200], [LW - 50, 280], [LANE_LEFT - 30, 350]], col: NEON.cyan },
             { pts: [[15, 40], [10, 120], [15, 220], [50, 320], [80, 380]], col: NEON.purple },
@@ -1141,7 +1185,7 @@
             }
 
             // 多个流动光点
-            for (let dot = 0; dot < 3; dot++) {
+            for (let dot = 0; dot < PERF.railFlowDots; dot++) {
                 const pos = ((time * 0.002 + dot * 0.33) % 1);
                 const target = pos * totalLen;
                 let acc = 0, dotX = projPts[0].x, dotY = projPts[0].y;
@@ -1158,7 +1202,7 @@
                 // 发光光点（带拖尾）
                 ctx.globalAlpha = 0.7 - dot * 0.15;
                 ctx.fillStyle = '#fff';
-                ctx.shadowColor = rail.col; ctx.shadowBlur = 12;
+                if (PERF.shadow) { ctx.shadowColor = rail.col; ctx.shadowBlur = 12 * PERF.shadowScale; }
                 ctx.beginPath(); ctx.arc(dotX, dotY, 2.5, 0, Math.PI * 2); ctx.fill();
                 ctx.globalAlpha = 0.3 - dot * 0.08;
                 ctx.fillStyle = rail.col;
@@ -1236,8 +1280,9 @@
             ctx.strokeStyle = neonGlow(arm % 2 === 0 ? NEON.cyan : NEON.purple, 0.25);
             ctx.lineWidth = 2;
             ctx.beginPath();
-            for (let i = 0; i < 40; i++) {
-                const t = i / 40;
+            const armPts = PERF.vortexArmPts;
+            for (let i = 0; i < armPts; i++) {
+                const t = i / armPts;
                 const a = baseAngle + t * Math.PI * 2.5;
                 const r = t * pr * 0.85;
                 const x = p.x + Math.cos(a) * r;
@@ -1253,7 +1298,7 @@
         cg.addColorStop(0.5, neonGlow(NEON.purple, 0.2));
         cg.addColorStop(1, 'rgba(0,0,0,0)');
         ctx.fillStyle = cg;
-        ctx.shadowColor = NEON.cyan; ctx.shadowBlur = 15;
+        if (PERF.shadow) { ctx.shadowColor = NEON.cyan; ctx.shadowBlur = 15 * PERF.shadowScale; }
         ctx.beginPath(); ctx.ellipse(p.x, p.y, pr * 0.25, pr * 0.25 * 0.72, 0, 0, Math.PI * 2); ctx.fill();
 
         // 中心亮点
@@ -1263,7 +1308,7 @@
         // 环上霓虹
         ctx.lineWidth = 1.2;
         ctx.strokeStyle = neonGlow(NEON.cyan, 0.35);
-        ctx.shadowColor = NEON.cyan; ctx.shadowBlur = 10;
+        if (PERF.shadow) { ctx.shadowColor = NEON.cyan; ctx.shadowBlur = 10 * PERF.shadowScale; }
         ctx.beginPath(); ctx.ellipse(p.x, p.y, pr + 3, pry + 2.2, 0, 0, Math.PI * 2); ctx.stroke();
 
         // 装饰螺栓（环上的凸起点）— 简化绘制避免过多渐变
@@ -1379,7 +1424,7 @@
         // ---- 5. 内侧霓虹边缘 ----
         ctx.lineWidth = 1.5;
         ctx.strokeStyle = neonGlow(NEON.cyan, 0.5);
-        ctx.shadowColor = NEON.cyan; ctx.shadowBlur = 12;
+        if (PERF.shadow) { ctx.shadowColor = NEON.cyan; ctx.shadowBlur = 12 * PERF.shadowScale; }
         ctx.beginPath();
         ctx.moveTo(pa.x + nx * wallW * 0.5, pa.y + ny * wallW * 0.5);
         ctx.lineTo(pb.x + nx * wallW * 0.5, pb.y + ny * wallW * 0.5);
@@ -1388,7 +1433,7 @@
         // 外侧霓虹边缘（较弱）
         ctx.lineWidth = 0.8;
         ctx.strokeStyle = neonGlow(NEON.cyan, 0.2);
-        ctx.shadowBlur = 5;
+        if (PERF.shadow) { ctx.shadowBlur = 5 * PERF.shadowScale; } else { ctx.shadowBlur = 0; }
         ctx.beginPath();
         ctx.moveTo(pa.x - nx * wallW * 0.5, pa.y - ny * wallW * 0.5);
         ctx.lineTo(pb.x - nx * wallW * 0.5, pb.y - ny * wallW * 0.5);
@@ -1425,7 +1470,7 @@
         const railTop = proj(LANE_LEFT, LANE_TOP), railBot = proj(LANE_LEFT, LH);
         ctx.lineWidth = 2;
         ctx.strokeStyle = neonGlow(NEON.cyan, 0.2);
-        ctx.shadowColor = NEON.cyan; ctx.shadowBlur = 6;
+        if (PERF.shadow) { ctx.shadowColor = NEON.cyan; ctx.shadowBlur = 6 * PERF.shadowScale; }
         ctx.beginPath(); ctx.moveTo(railTop.x, railTop.y); ctx.lineTo(railBot.x, railBot.y); ctx.stroke();
         ctx.shadowBlur = 0;
 
@@ -1433,7 +1478,7 @@
         const arcL = proj(LANE_LEFT, LANE_TOP), arcR = proj(LW, LANE_TOP);
         const arcM = proj(LANE_LEFT + LANE_W / 2, LANE_TOP - LANE_W / 2);
         ctx.strokeStyle = neonGlow(NEON.cyan, 0.15); ctx.lineWidth = 2;
-        ctx.shadowColor = NEON.cyan; ctx.shadowBlur = 5;
+        if (PERF.shadow) { ctx.shadowColor = NEON.cyan; ctx.shadowBlur = 5 * PERF.shadowScale; }
         ctx.beginPath(); ctx.moveTo(arcL.x, arcL.y); ctx.quadraticCurveTo(arcM.x, arcM.y, arcR.x, arcR.y); ctx.stroke();
         ctx.shadowBlur = 0;
 
@@ -1443,7 +1488,7 @@
             const lp = proj(LW - LANE_W / 2, ly);
             const lit = (frame + i * 3) % 20 < 10;
             ctx.fillStyle = lit ? neonGlow(NEON.orange, 0.6) : neonGlow(NEON.orange, 0.1);
-            if (lit) { ctx.shadowColor = NEON.orange; ctx.shadowBlur = 5; }
+            if (lit && PERF.shadow) { ctx.shadowColor = NEON.orange; ctx.shadowBlur = 5 * PERF.shadowScale; }
             ctx.beginPath(); ctx.arc(lp.x, lp.y, 2 * scaleAt(ly), 0, Math.PI * 2); ctx.fill();
             ctx.shadowBlur = 0;
         }
@@ -1451,14 +1496,16 @@
     }
 
     function drawDecorLights() {
+        if (frame % PERF.decorInterval !== 0 && PERF.tier !== 'HIGH') return;
         ctx.save();
+        ctx.shadowBlur = 0;
         for (const l of decorLights) {
             const pulse = Math.sin(frame * 0.06 + l.ph);
             const lit = pulse > 0;
             const pp = proj(l.x, l.y);
             ctx.globalAlpha = lit ? 0.35 + pulse * 0.45 : 0.08;
             ctx.fillStyle = l.col;
-            if (lit) { ctx.shadowColor = l.col; ctx.shadowBlur = 8; } else { ctx.shadowBlur = 0; }
+            if (lit && PERF.shadow) { ctx.shadowColor = l.col; ctx.shadowBlur = 8 * PERF.shadowScale; } else { ctx.shadowBlur = 0; }
             ctx.beginPath(); ctx.arc(pp.x, pp.y, 2.5 * scaleAt(l.y), 0, Math.PI * 2); ctx.fill();
         }
         ctx.restore();
@@ -1476,7 +1523,7 @@
             const g = ctx.createRadialGradient(pp.x - 1, pp.y - 1, 0, pp.x, pp.y, sz);
             if (r.lit) {
                 g.addColorStop(0, '#fff'); g.addColorStop(0.3, r.col); g.addColorStop(1, neonGlow(r.col, 0.3));
-                ctx.shadowColor = r.col; ctx.shadowBlur = 12;
+                if (PERF.shadow) { ctx.shadowColor = r.col; ctx.shadowBlur = 12 * PERF.shadowScale; }
             } else {
                 g.addColorStop(0, 'rgba(60,60,80,0.3)'); g.addColorStop(1, 'rgba(20,20,30,0.15)');
                 ctx.shadowBlur = 0;
@@ -1535,7 +1582,7 @@
         // V形霓虹边缘
         ctx.strokeStyle = neonGlow(NEON.pink, 0.4);
         ctx.lineWidth = 1.2;
-        ctx.shadowColor = NEON.pink; ctx.shadowBlur = 8;
+        if (PERF.shadow) { ctx.shadowColor = NEON.pink; ctx.shadowBlur = 8 * PERF.shadowScale; }
         ctx.beginPath();
         ctx.moveTo(vLp.x, vLp.y);
         ctx.lineTo(vTipP.x, vTipP.y);
@@ -1546,7 +1593,7 @@
         // 危险指示灯脉冲
         const pulse = 0.15 + Math.sin(frame * 0.08) * 0.1;
         ctx.fillStyle = neonGlow(NEON.pink, pulse);
-        ctx.shadowColor = NEON.pink; ctx.shadowBlur = 10;
+        if (PERF.shadow) { ctx.shadowColor = NEON.pink; ctx.shadowBlur = 10 * PERF.shadowScale; }
         ctx.beginPath(); ctx.arc(vTipP.x, vTipP.y + 5, 3, 0, Math.PI * 2); ctx.fill();
 
         ctx.restore();
@@ -1558,15 +1605,20 @@
         const sc = scaleAt(b.y);
         const pr = projR(b.r, b.y);
 
-        // 尾迹 — 霓虹拖尾
-        for (let i = 0; i < b.trail.length; i++) {
-            const t = b.trail[i], pp = proj(t.x, t.y);
-            const a = (i / b.trail.length);
-            const tsc = scaleAt(t.y);
-            ctx.save(); ctx.globalAlpha = a * 0.25;
+        // 尾迹 — 霓虹拖尾（优化：减少save/restore和shadowBlur）
+        const tLen = b.trail.length;
+        if (tLen > 0) {
+            ctx.save();
             ctx.fillStyle = NEON.cyan;
-            ctx.shadowColor = NEON.cyan; ctx.shadowBlur = 5;
-            ctx.beginPath(); ctx.arc(pp.x, pp.y, pr * a * 0.55, 0, Math.PI * 2); ctx.fill();
+            if (PERF.trailShadow) {
+                ctx.shadowColor = NEON.cyan; ctx.shadowBlur = 5;
+            }
+            for (let i = 0; i < tLen; i++) {
+                const t = b.trail[i], pp = proj(t.x, t.y);
+                const a = (i / tLen);
+                ctx.globalAlpha = a * 0.25;
+                ctx.beginPath(); ctx.arc(pp.x, pp.y, pr * a * 0.55, 0, Math.PI * 2); ctx.fill();
+            }
             ctx.restore();
         }
 
@@ -1578,10 +1630,12 @@
         ctx.beginPath(); ctx.ellipse(pp.x + 3, pp.y + 6 * sc, pr * 1.2, pr * 0.5, 0, 0, Math.PI * 2); ctx.fill();
 
         // 球体外辉光
-        ctx.fillStyle = neonGlow(NEON.cyan, 0.08);
-        ctx.shadowColor = NEON.cyan; ctx.shadowBlur = 20;
-        ctx.beginPath(); ctx.arc(pp.x, pp.y, pr * 1.8, 0, Math.PI * 2); ctx.fill();
-        ctx.shadowBlur = 0;
+        if (PERF.shadow) {
+            ctx.fillStyle = neonGlow(NEON.cyan, 0.08);
+            ctx.shadowColor = NEON.cyan; ctx.shadowBlur = 20 * PERF.shadowScale;
+            ctx.beginPath(); ctx.arc(pp.x, pp.y, pr * 1.8, 0, Math.PI * 2); ctx.fill();
+            ctx.shadowBlur = 0;
+        }
 
         // 球体 — 金属+能量核心
         const mg = ctx.createRadialGradient(pp.x - pr * 0.3, pp.y - pr * 0.3, 0, pp.x, pp.y, pr);
@@ -1609,7 +1663,7 @@
         // 边缘霓虹环
         ctx.strokeStyle = neonGlow(NEON.cyan, 0.25);
         ctx.lineWidth = 0.8;
-        ctx.shadowColor = NEON.cyan; ctx.shadowBlur = 6;
+        if (PERF.shadow) { ctx.shadowColor = NEON.cyan; ctx.shadowBlur = 6 * PERF.shadowScale; }
         ctx.beginPath(); ctx.arc(pp.x, pp.y, pr, 0, Math.PI * 2); ctx.stroke();
 
         ctx.restore();
@@ -1638,7 +1692,7 @@
         const springCol = springComp > 0 ? NEON.orange : '#606878';
         ctx.strokeStyle = springComp > 0 ? NEON.orange : '#808898';
         ctx.lineWidth = 3 * sc;
-        if (springComp > 0) { ctx.shadowColor = NEON.orange; ctx.shadowBlur = 8; }
+        if (springComp > 0) { if (PERF.shadow) { ctx.shadowColor = NEON.orange; ctx.shadowBlur = 8 * PERF.shadowScale; } }
         ctx.beginPath(); ctx.moveTo(pBase.x, pBase.y);
         for (let i = 1; i <= segs; i++) {
             const xOff = (i % 2 ? 1 : -1) * 6 * sc;
@@ -1657,7 +1711,7 @@
             const pg = ctx.createLinearGradient(bL.x, bL.y, bL.x + bw * springComp, bL.y);
             pg.addColorStop(0, NEON.cyan); pg.addColorStop(0.5, NEON.purple); pg.addColorStop(1, NEON.magenta);
             ctx.fillStyle = pg;
-            ctx.shadowColor = NEON.cyan; ctx.shadowBlur = 6;
+            if (PERF.shadow) { ctx.shadowColor = NEON.cyan; ctx.shadowBlur = 6 * PERF.shadowScale; }
             ctx.fillRect(bL.x, bL.y, bw * springComp, bh);
         }
         ctx.restore();
@@ -1685,7 +1739,7 @@
 
         // 内边缘霓虹
         ctx.strokeStyle = neonGlow(NEON.cyan, 0.08); ctx.lineWidth = 1;
-        ctx.shadowColor = NEON.cyan; ctx.shadowBlur = 4;
+        if (PERF.shadow) { ctx.shadowColor = NEON.cyan; ctx.shadowBlur = 4; }
         ctx.beginPath();
         ctx.moveTo(tl.x, tl.y); ctx.lineTo(tr.x, tr.y);
         ctx.lineTo(br.x, br.y); ctx.lineTo(bl.x, bl.y);
@@ -1702,6 +1756,7 @@
     }
 
     function applyBloom() {
+        if (!PERF.bloom) return;
         // 简化版 bloom — 叠加一层模糊的发光（每3帧更新一次减少性能开销）
         if (frame % 3 === 0) {
             bloomCtx.clearRect(0, 0, RENDER_W, RENDER_H);
@@ -1736,7 +1791,7 @@
             ctx.save(); ctx.globalAlpha = a;
             const col = p.big ? NEON.yellow : NEON.cyan;
             ctx.fillStyle = col;
-            ctx.shadowColor = col; ctx.shadowBlur = p.big ? 15 : 6;
+            if (PERF.shadow) { ctx.shadowColor = col; ctx.shadowBlur = (p.big ? 15 : 6) * PERF.shadowScale; }
             ctx.font = `bold ${p.big ? 16 : 12}px 'Orbitron', sans-serif`;
             ctx.textAlign = 'center';
             ctx.fillText(p.txt, pp.x, pp.y);
@@ -1832,7 +1887,7 @@
                     for (const s of slings) s.collide(ball);
                 }
             }
-            if (launched) { ball.trail.push({ x: ball.x, y: ball.y }); if (ball.trail.length > 16) ball.trail.shift(); }
+            if (launched) { ball.trail.push({ x: ball.x, y: ball.y }); if (ball.trail.length > PERF.trailLen) ball.trail.shift(); }
         }
         tickParticles();
     }
@@ -1868,7 +1923,7 @@
             ctx.save();
             ctx.globalAlpha = 0.5 + Math.sin(Date.now() / 300) * 0.3;
             ctx.fillStyle = NEON.cyan;
-            ctx.shadowColor = NEON.cyan; ctx.shadowBlur = 8;
+            if (PERF.shadow) { ctx.shadowColor = NEON.cyan; ctx.shadowBlur = 8 * PERF.shadowScale; }
             ctx.font = `bold ${Math.round(9 * scaleAt(LH - 185))}px 'Rajdhani', sans-serif`;
             ctx.textAlign = 'center';
             const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
@@ -1878,8 +1933,36 @@
         }
     }
 
+    // ========== 运行时自适应帧率检测 ==========
+    let _fpsFrames = 0, _fpsTime = performance.now(), _adaptChecked = false;
+    function checkAdaptivePerf() {
+        _fpsFrames++;
+        const now = performance.now();
+        const elapsed = now - _fpsTime;
+        if (elapsed >= 2000) { // 每2秒检测一次
+            const fps = _fpsFrames / (elapsed / 1000);
+            _fpsFrames = 0; _fpsTime = now;
+            // 如果帧率持续低于35fps且当前不是最低档，自动降级
+            if (!_adaptChecked && fps < 35 && PERF.tier !== 'LOW') {
+                console.log('[Perf] Adaptive downgrade: fps=' + fps.toFixed(1) + ', disabling expensive effects');
+                PERF.bloom = false;
+                PERF.shadow = false;
+                PERF.cracks = false;
+                PERF.railFlow = false;
+                PERF.bumperArcs = false;
+                PERF.trailShadow = false;
+                PERF.maxParticles = 30;
+                PERF.trailLen = 4;
+                PERF.vortexArmPts = 15;
+                PERF.bumperDots = 5;
+                PERF.tier = 'LOW';
+                _adaptChecked = true;
+            }
+        }
+    }
+
     function loop() {
-        try { update(); draw(); } catch (e) { console.error('[Neon Cosmos]', e); }
+        try { update(); draw(); checkAdaptivePerf(); } catch (e) { console.error('[Neon Cosmos]', e); }
         requestAnimationFrame(loop);
     }
 
